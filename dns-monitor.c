@@ -17,8 +17,11 @@ int main(int argc, char**argv){
     memset(arguments.translation_file, 0, INPUT_LEN);
     arguments.verbose = false;
 
-    while((opt = getopt(argc, argv, "i:r:vd:t:")) != -1){
+    while((opt = getopt(argc, argv, "hi:r:vd:t:")) != -1){
         switch (opt){
+            case 'h':
+                fprintf(stdout, "how to use:\n./dns-monitor [-i interface] [-r pcap file] [-v verbose output] [-d domains file] [-t translation file]\n");
+                exit(0);
             case 'i':
                 strncpy(arguments.interface, optarg, INPUT_LEN);
                 fprintf(stdout, "%s\n", arguments.interface);
@@ -44,7 +47,7 @@ int main(int argc, char**argv){
         }
     }
 
-    
+
 
     return 0;
 }
