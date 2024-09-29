@@ -9,7 +9,7 @@ all: dns-monitor
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-ipk-sniffer: $(PROG_OBJS)
+dns-monitor: $(PROG_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 clean:
