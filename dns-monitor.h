@@ -6,4 +6,4 @@ typedef struct arguments{
     bool verbose;
     char domains_file[INPUT_LEN];
     char translation_file[INPUT_LEN];
-}Arguments;
+}arguments_t;

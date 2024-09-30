@@ -5,17 +5,31 @@
 #include <stdbool.h>
 #include <string.h>
 #include <pcap.h>
+#include <time.h>
 
 #include "dns-monitor.h"
 
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
     fprintf(stdout, "dns packet found\n");
+
+    arguments_t *arguments = (arguments_t *)args;
+
+    if (arguments->verbose){
+
+    }
+    else{
+        char time_buffer[100];
+        struct tm *tm_info;
+        tm_info = localtime(&(header->ts.tv_sec));
+        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", tm_info);
+        fprintf(stdout, "%s\n", time_buffer);
+    }
 }
 
 int main(int argc, char **argv){
     int opt;
 
-    Arguments arguments;
+    arguments_t arguments;
     memset(arguments.domains_file, 0, INPUT_LEN);
     memset(arguments.interface, 0, INPUT_LEN);
     memset(arguments.pcap_file, 0, INPUT_LEN);
@@ -59,24 +73,28 @@ int main(int argc, char **argv){
     bpf_u_int32 maskp;
     if (pcap_lookupnet(arguments.interface, &netp, &maskp, errbuff) == -1){
         fprintf(stderr, "Error: %s \n", errbuff);
+        exit(1);
     }
 
     pcap_t *handle;
     handle = pcap_open_live(arguments.interface, BUFSIZ, 1, 1000, errbuff);
     if (handle == NULL){
         fprintf(stderr, "Interface couldnt be opened. Error: %s \n", errbuff);
+        exit(1);
     }
 
     struct bpf_program fp;
-    if (pcap_compile(handle, &fp, "port 53", 1, netp) == -1){
+    if (pcap_compile(handle, &fp, "udp port 53", 1, netp) == -1){
         fprintf(stderr, "DNS port filter couldnt be compiled.\n");
+        exit(1);
     }
 
     if (pcap_setfilter(handle, &fp) == -1){
         fprintf(stderr, "DNS port filter coulndt be applyed.\n");
+        exit(1);
     }
 
-    pcap_loop(handle, 0, packet_handler, NULL);
+    pcap_loop(handle, 0, packet_handler, (unsigned char *)&arguments);
 
     pcap_close(handle);
 
