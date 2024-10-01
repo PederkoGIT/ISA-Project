@@ -6,24 +6,113 @@
 #include <string.h>
 #include <pcap.h>
 #include <time.h>
+#include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <net/ethernet.h>
+#include <netinet/udp.h>
 
 #include "dns-monitor.h"
 
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
-    fprintf(stdout, "dns packet found\n");
 
     arguments_t *arguments = (arguments_t *)args;
 
-    if (arguments->verbose){
+    char time_buffer[100];
+    struct tm *tm_info;
+    tm_info = localtime(&(header->ts.tv_sec));
+    strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", tm_info);
 
+    struct ether_header *ethernet_header;
+    ethernet_header = (struct ether_header *)(packet);
+    struct udphdr *udp_header;
+    char ip_src[INET6_ADDRSTRLEN];
+    char ip_dst[INET6_ADDRSTRLEN];
+    int port_dst;
+    int port_src;
+    char dns_type[2];
+    dns_header_t *dns_header;
+    unsigned char *dns_data;
+
+    if (ntohs(ethernet_header->ether_type) == ETHERTYPE_IP){
+
+        struct ip *ip_header;
+        ip_header = (struct ip *)(packet + ETHERNET_LEN);
+        inet_ntop(AF_INET, &(ip_header->ip_src.s_addr), ip_src, INET6_ADDRSTRLEN);
+        inet_ntop(AF_INET, &(ip_header->ip_dst.s_addr), ip_dst, INET6_ADDRSTRLEN);
+
+        if (ip_header->ip_p == IPPROTO_UDP){
+
+            udp_header = (struct udphdr *)(packet + ETHERNET_LEN + ip_header->ip_hl * 4);
+            port_dst = ntohs(udp_header->uh_dport);
+            port_src = ntohs(udp_header->uh_sport);
+
+            dns_header = (dns_header_t *)(packet + ETHERNET_LEN + ip_header->ip_hl * 4 + sizeof(struct udphdr));
+
+            dns_header->flags = ntohs(dns_header->flags);
+            dns_header->ancount = ntohs(dns_header->ancount);
+            dns_header->arcount = ntohs(dns_header->arcount);
+            dns_header->id = ntohs(dns_header->id);
+            dns_header->nscount = ntohs(dns_header->nscount);
+            dns_header->qdcount = ntohs(dns_header->qdcount);
+
+            if ((dns_header->flags & DNS_TYPE_MASK) == DNS_TYPE_MASK){
+                dns_type[0] = 'R';
+            }
+            else{
+                dns_type[0] = 'Q';
+            }
+
+            dns_data = packet + ETHERNET_LEN + ip_header->ip_hp * 4 + sizeof(struct udphdr) + sizeof(dns_header);
+
+        }
+        
+    }
+    else if (ntohs(ethernet_header->ether_type == ETHERTYPE_IPV6)){
+        printf("ipv6\n");
     }
     else{
-        char time_buffer[100];
-        struct tm *tm_info;
-        tm_info = localtime(&(header->ts.tv_sec));
-        strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", tm_info);
-        fprintf(stdout, "%s\n", time_buffer);
+        exit(1);
     }
+
+    if (arguments->verbose){
+        uint16_t qr = (dns_header->flags >> 15) & 1;
+        uint16_t opcode = (dns_header->flags >> 11) & 15;
+        uint16_t aa = (dns_header->flags >> 10) & 1;
+        uint16_t tc = (dns_header->flags >> 9) & 1;
+        uint16_t rd = (dns_header->flags >> 8) & 1;
+        uint16_t ra = (dns_header->flags >> 7) & 1;
+        uint16_t ad = (dns_header->flags >> 5) & 1;
+        uint16_t cd = (dns_header->flags >> 4) & 1;
+        uint16_t rcode = dns_header->flags & 15;
+
+        fprintf(stdout, "Timestamp: %s\n", time_buffer);
+        fprintf(stdout, "SrcIP: %s\n", ip_src);
+        fprintf(stdout, "DstIP: %s\n", ip_dst);
+        fprintf(stdout, "SrcPort: UDP/%d\n", port_src);
+        fprintf(stdout, "DestPort: UDP/%d\n", port_dst);
+        fprintf(stdout, "Identifier: 0x%X\n", dns_header->id);
+        fprintf(stdout, "Flags: QR=%d, OPCODE=%d, AA=%d, TC=%d, RD=%d, RA=%d, AD=%d, CD=%d, RCODE=%d\n", qr, opcode, aa, tc, rd, ra, ad, cd, rcode);
+
+        if (dns_header->qdcount > 0){
+
+        }
+        if (dns_header->ancount > 0){
+
+        }
+        if (dns_header->nscount > 0){
+
+        }
+        if (dns_header->arcount > 0){
+
+        }
+    }
+    else{
+        fprintf(stdout, "%s %s->%s (%s %d/%d/%d/%d)\n", time_buffer, ip_src, ip_dst, dns_type, dns_header->qdcount, dns_header->ancount, dns_header->nscount, dns_header->arcount);
+
+
+    }
+    fprintf(stdout, "\n");
 }
 
 int main(int argc, char **argv){
