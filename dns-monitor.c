@@ -63,7 +63,7 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
                 dns_type[0] = 'Q';
             }
 
-            dns_data = packet + ETHERNET_LEN + ip_header->ip_hp * 4 + sizeof(struct udphdr) + sizeof(dns_header);
+            dns_data = (unsigned char *)(packet + ETHERNET_LEN + ip_header->ip_hl * 4 + sizeof(struct udphdr) + sizeof(dns_header_t));
 
         }
         
@@ -94,11 +94,71 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         fprintf(stdout, "Identifier: 0x%X\n", dns_header->id);
         fprintf(stdout, "Flags: QR=%d, OPCODE=%d, AA=%d, TC=%d, RD=%d, RA=%d, AD=%d, CD=%d, RCODE=%d\n", qr, opcode, aa, tc, rd, ra, ad, cd, rcode);
 
+        uint16_t data_len = 0;
         if (dns_header->qdcount > 0){
+            for (int i = 0; i < dns_header->qdcount; i++){
+                while (dns_data[data_len] != 0){
+                    uint16_t segment_len = dns_data[data_len];
+                    data_len++;
 
+                    for (int j = 0; j < segment_len; j++){
+                        fprintf(stdout, "%c", dns_data[data_len]);
+                        data_len++;
+                    }
+
+                    if (dns_data[data_len] != 0){
+                        fprintf(stdout, ".");
+                    }
+
+                }
+
+                data_len++;
+
+                uint16_t qtype = ntohs(*(uint16_t *)(dns_data + data_len));
+                data_len += 2;
+
+                switch (qtype) {
+                    case 1: 
+                        fprintf(stdout, " A");
+                        break;
+                    case 2:
+                        fprintf(stdout, " NS");
+                        break;
+                    case 5:
+                        fprintf(stdout, " CNAME");
+                        break;
+                    case 6:
+                        fprintf(stdout, " SOA");
+                        break;
+                    case 15:
+                        fprintf(stdout, " MX");
+                        break;
+                    case 28:
+                        fprintf(stdout, " AAAA");
+                        break;
+                    case 33:
+                        fprintf(stdout, " SRV");
+                        break;
+                    default:
+                        fprintf(stdout, " UNKNOWN");
+                }
+
+                uint16_t qclass = ntohs(*(uint16_t *)(dns_data + data_len));
+                data_len += 2;
+
+                if (qclass == 1){
+                    fprintf(stdout, " IN\n");
+                }
+                else{
+                    fprintf(stdout, " UNKNOWN");
+                }
+
+            }
         }
         if (dns_header->ancount > 0){
-
+            for (int i = 0; i < dns_header->ancount; i++){
+                
+            }
         }
         if (dns_header->nscount > 0){
 
@@ -183,7 +243,7 @@ int main(int argc, char **argv){
         exit(1);
     }
 
-    pcap_loop(handle, 0, packet_handler, (unsigned char *)&arguments);
+    pcap_loop(handle, 2, packet_handler, (unsigned char *)&arguments);
 
     pcap_close(handle);
 
