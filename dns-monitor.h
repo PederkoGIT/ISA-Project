@@ -5,7 +5,9 @@
 
 typedef struct arguments{
     char interface[INPUT_LEN];
+    bool set_interface;
     char pcap_file[INPUT_LEN];
+    bool set_pcap;
     bool verbose;
     char domains_file[INPUT_LEN];
     char translation_file[INPUT_LEN];

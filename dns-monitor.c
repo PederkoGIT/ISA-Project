@@ -321,6 +321,8 @@ int main(int argc, char **argv){
     memset(arguments.pcap_file, 0, INPUT_LEN);
     memset(arguments.translation_file, 0, INPUT_LEN);
     arguments.verbose = false;
+    arguments.set_interface = false;
+    arguments.set_pcap = false;
 
     while((opt = getopt(argc, argv, "hi:r:vd:t:")) != -1){
         switch (opt){
@@ -330,10 +332,12 @@ int main(int argc, char **argv){
             case 'i':
                 strncpy(arguments.interface, optarg, INPUT_LEN);
                 fprintf(stdout, "%s\n", arguments.interface);
+                arguments.set_interface = true;
                 break;
             case 'r':
                 strncpy(arguments.pcap_file, optarg, INPUT_LEN);
                 fprintf(stdout, "%s\n", arguments.pcap_file);
+                arguments.set_pcap = true;
                 break;
             case 'v':
                 arguments.verbose = true;
@@ -352,22 +356,46 @@ int main(int argc, char **argv){
         }
     }
 
-
     char errbuff[PCAP_ERRBUF_SIZE];
 
     bpf_u_int32 netp;
     bpf_u_int32 maskp;
-    if (pcap_lookupnet(arguments.interface, &netp, &maskp, errbuff) == -1){
-        fprintf(stderr, "Error: %s \n", errbuff);
+    
+
+    pcap_t *handle;
+    
+
+    if (!arguments.set_interface && !arguments.set_pcap){
+        fprintf(stdout, "how to use:\n./dns-monitor (-i interface | -r pcap file) [-v verbose output] [-d domains file] [-t translation file]\n");
+        exit(0);
+    }
+    else if (!arguments.set_interface && arguments.set_pcap){
+        handle = pcap_open_offline(arguments.pcap_file, errbuff);
+        if (handle == NULL){
+            fprintf(stderr, "Pcap file couldnt be opeded. Error: %s \n", errbuff);
+            exit(1);
+        }
+    }
+    else if (arguments.set_interface && !arguments.set_pcap){
+        if (pcap_lookupnet(arguments.interface, &netp, &maskp, errbuff) == -1){
+            fprintf(stderr, "Error: %s \n", errbuff);
+            exit(1);
+        }
+
+        handle = pcap_open_live(arguments.interface, BUFSIZ, 1, 1000, errbuff);
+        if (handle == NULL){
+            fprintf(stderr, "Interface couldnt be opened. Error: %s \n", errbuff);
+            exit(1);
+        }
+
+    }
+    else{
+        fprintf(stderr, "Error: Cannot sniff on interface and read pcap file at the same time\n");
         exit(1);
     }
 
-    pcap_t *handle;
-    handle = pcap_open_live(arguments.interface, BUFSIZ, 1, 1000, errbuff);
-    if (handle == NULL){
-        fprintf(stderr, "Interface couldnt be opened. Error: %s \n", errbuff);
-        exit(1);
-    }
+
+    
 
     struct bpf_program fp;
     if (pcap_compile(handle, &fp, "udp port 53", 1, netp) == -1){
