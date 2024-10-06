@@ -14,6 +14,82 @@
 
 #include "dns-monitor.h"
 
+uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
+    bool jumped = false;
+    uint16_t jump_backup;
+
+    while (dns_data[data_len] != 0){
+        uint16_t segment_len = dns_data[data_len];
+
+        if ((segment_len & DNS_NAME_JUMP) == DNS_NAME_JUMP){
+            uint16_t jump_target = ((dns_data[data_len] & 0x3F) << 8) | dns_data[data_len + 1];
+
+            if (!jumped){
+                jumped = true;
+                jump_backup = data_len + 2;
+            }
+
+            data_len = jump_target - sizeof(dns_header_t);
+        }
+        else{
+            data_len++;
+            for (int j = 0; j < segment_len; j++){
+            fprintf(stdout, "%c", dns_data[data_len]);
+                data_len++;
+            }
+
+            if (dns_data[data_len] != 0){
+                fprintf(stdout, ".");
+            }
+        }
+
+    }
+
+    if (jumped){
+        data_len = jump_backup;
+    }
+
+    uint16_t type = ntohs(*(uint16_t *)(dns_data + data_len));
+    data_len += 2;
+
+    uint16_t class = ntohs(*(uint16_t *)(dns_data + data_len));
+    data_len += 2;
+
+    uint32_t ttl = ntohl(*(uint32_t *)(dns_data + data_len));
+    data_len += 4;
+
+    uint16_t rdlength = ntohs(*(uint16_t *)(dns_data + data_len));
+    data_len += 2;
+
+    fprintf(stdout, " %d ", ttl);
+
+    if (class == 1){
+        fprintf(stdout, "IN ");
+    }
+    else{
+        fprintf(stdout, "UNKNOWN ");
+    }
+
+    char rdata[INET6_ADDRSTRLEN];
+    unsigned char *dns_addr = &dns_data[data_len];
+
+
+    if (type == 1) { 
+        inet_ntop(AF_INET, dns_addr, rdata, INET_ADDRSTRLEN);
+
+        fprintf(stdout, "A %s\n", rdata);
+
+    } else if (type == 28) { 
+        inet_ntop(AF_INET6, dns_addr, rdata, INET6_ADDRSTRLEN);
+
+        fprintf(stdout, "AAAA %s\n", rdata);
+    }
+
+    data_len += rdlength;
+
+    return data_len;
+}
+
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
 
     arguments_t *arguments = (arguments_t *)args;
@@ -164,6 +240,8 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             fprintf(stdout, "[Answer Section]\n\n");
 
             for (int i = 0; i < dns_header->ancount; i++){
+                data_len = dns_printout(dns_data, data_len);
+                /*
                 bool jumped = false;
                 uint16_t jump_backup;
 
@@ -234,7 +312,7 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
                     fprintf(stdout, "AAAA %s\n", rdata);
                 }
 
-                data_len += rdlength;
+                data_len += rdlength;*/
 
             }
 
