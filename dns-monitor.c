@@ -14,6 +14,37 @@
 
 #include "dns-monitor.h"
 
+bool find_in_file(char *file_name, char *domain_name){
+    FILE *file = fopen(file_name, "r");
+    if (file == NULL){
+        return false;
+    }
+
+    char file_line[NAME_LENGTH];
+    while(fgets(file_line, NAME_LENGTH, file) != NULL){
+        file_line[strcspn(file_line, "\n")] = '\0';
+
+        if (strncmp(file_line, domain_name, NAME_LENGTH) == 0){
+            fclose(file);
+            return true;
+        }
+    }
+
+    fclose(file);
+    return false;
+}
+
+void append_file(char *file_name, char *string){
+    FILE *file = fopen(file_name, "a");
+    if (file == NULL){
+        fprintf(stderr, "Error: file couldtn be opened\n");
+        exit(1);
+    }
+
+    fprintf(file, "%s\n", string);
+    fclose(file);
+}
+
 uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
     bool jumped = false;
     uint16_t jump_backup;
@@ -94,25 +125,25 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
             uint16_t segment_len = dns_data[data_len];
 
             if ((segment_len & DNS_NAME_JUMP) == DNS_NAME_JUMP){
-            uint16_t jump_target = ((dns_data[data_len] & 0x3F) << 8) | dns_data[data_len + 1];
+                uint16_t jump_target = ((dns_data[data_len] & 0x3F) << 8) | dns_data[data_len + 1];
 
-            if (!jumped){
-                jumped = true;
-                jump_backup = data_len + 2;
-            }
+                if (!jumped){
+                    jumped = true;
+                    jump_backup = data_len + 2;
+                }
 
-            data_len = jump_target - sizeof(dns_header_t);
+                data_len = jump_target - sizeof(dns_header_t);
             }
             else{
-                data_len++;
-                for (int j = 0; j < segment_len; j++){
-                fprintf(stdout, "%c", dns_data[data_len]);
                     data_len++;
-                }
+                    for (int j = 0; j < segment_len; j++){
+                    fprintf(stdout, "%c", dns_data[data_len]);
+                        data_len++;
+                    }
 
-                if (dns_data[data_len] != 0){
-                    fprintf(stdout, ".");
-                }
+                    if (dns_data[data_len] != 0){
+                        fprintf(stdout, ".");
+                    }
             }
 
         }
@@ -220,17 +251,33 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             fprintf(stdout, "[Question Section]\n\n");
 
             for (int i = 0; i < dns_header->qdcount; i++){
+                char domain_name[NAME_LENGTH];
+                uint16_t domain_len = 0;
+
                 while (dns_data[data_len] != 0){
                     uint16_t segment_len = dns_data[data_len];
                     data_len++;
 
                     for (int j = 0; j < segment_len; j++){
                         fprintf(stdout, "%c", dns_data[data_len]);
+                        domain_name[domain_len] = dns_data[data_len];
                         data_len++;
+                        domain_len++;
                     }
 
                     if (dns_data[data_len] != 0){
                         fprintf(stdout, ".");
+                        domain_name[domain_len] = '.';
+                        domain_len++;
+                    }
+
+                }
+
+                if (arguments->set_domains){
+                    domain_name[domain_len + 1] = '\0';
+
+                    if (!find_in_file(arguments->domains_file, domain_name)){
+                        append_file(arguments->domains_file, domain_name);
                     }
 
                 }
@@ -323,6 +370,8 @@ int main(int argc, char **argv){
     arguments.verbose = false;
     arguments.set_interface = false;
     arguments.set_pcap = false;
+    arguments.set_domains = false;
+    arguments.set_translations = false;
 
     while((opt = getopt(argc, argv, "hi:r:vd:t:")) != -1){
         switch (opt){
@@ -346,15 +395,18 @@ int main(int argc, char **argv){
             case 'd':
                 strncpy(arguments.domains_file, optarg, INPUT_LEN);
                 fprintf(stdout, "%s\n", arguments.domains_file);
+                arguments.set_domains = true;
                 break;
             case 't':
                 strncpy(arguments.translation_file, optarg, INPUT_LEN);
                 fprintf(stdout, "%s\n", arguments.translation_file);
+                arguments.set_translations = true;
                 break;
             default:
                 exit(1);
         }
     }
+    
 
     char errbuff[PCAP_ERRBUF_SIZE];
 

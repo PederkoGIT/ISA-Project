@@ -2,6 +2,7 @@
 #define DNS_TYPE_MASK 0x8000
 #define ETHERNET_LEN 14
 #define DNS_NAME_JUMP 0xC0
+#define NAME_LENGTH 256
 
 typedef struct arguments{
     char interface[INPUT_LEN];
@@ -10,7 +11,9 @@ typedef struct arguments{
     bool set_pcap;
     bool verbose;
     char domains_file[INPUT_LEN];
+    bool set_domains;
     char translation_file[INPUT_LEN];
+    bool set_translations;
 }arguments_t;
 
 typedef struct dns_header{
