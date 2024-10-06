@@ -1,6 +1,7 @@
 #define INPUT_LEN 64
 #define DNS_TYPE_MASK 0x8000
 #define ETHERNET_LEN 14
+#define DNS_NAME_JUMP 0xC0
 
 typedef struct arguments{
     char interface[INPUT_LEN];

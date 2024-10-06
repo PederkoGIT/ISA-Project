@@ -92,10 +92,12 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         fprintf(stdout, "SrcPort: UDP/%d\n", port_src);
         fprintf(stdout, "DestPort: UDP/%d\n", port_dst);
         fprintf(stdout, "Identifier: 0x%X\n", dns_header->id);
-        fprintf(stdout, "Flags: QR=%d, OPCODE=%d, AA=%d, TC=%d, RD=%d, RA=%d, AD=%d, CD=%d, RCODE=%d\n", qr, opcode, aa, tc, rd, ra, ad, cd, rcode);
+        fprintf(stdout, "Flags: QR=%d, OPCODE=%d, AA=%d, TC=%d, RD=%d, RA=%d, AD=%d, CD=%d, RCODE=%d\n\n", qr, opcode, aa, tc, rd, ra, ad, cd, rcode);
 
         uint16_t data_len = 0;
         if (dns_header->qdcount > 0){
+            fprintf(stdout, "[Question Section]\n\n");
+
             for (int i = 0; i < dns_header->qdcount; i++){
                 while (dns_data[data_len] != 0){
                     uint16_t segment_len = dns_data[data_len];
@@ -117,48 +119,126 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
                 uint16_t qtype = ntohs(*(uint16_t *)(dns_data + data_len));
                 data_len += 2;
 
-                switch (qtype) {
-                    case 1: 
-                        fprintf(stdout, " A");
-                        break;
-                    case 2:
-                        fprintf(stdout, " NS");
-                        break;
-                    case 5:
-                        fprintf(stdout, " CNAME");
-                        break;
-                    case 6:
-                        fprintf(stdout, " SOA");
-                        break;
-                    case 15:
-                        fprintf(stdout, " MX");
-                        break;
-                    case 28:
-                        fprintf(stdout, " AAAA");
-                        break;
-                    case 33:
-                        fprintf(stdout, " SRV");
-                        break;
-                    default:
-                        fprintf(stdout, " UNKNOWN");
-                }
-
                 uint16_t qclass = ntohs(*(uint16_t *)(dns_data + data_len));
                 data_len += 2;
 
                 if (qclass == 1){
-                    fprintf(stdout, " IN\n");
+                    fprintf(stdout, " IN ");
                 }
                 else{
-                    fprintf(stdout, " UNKNOWN");
+                    fprintf(stdout, " UNKNOWN ");
                 }
 
+                switch (qtype) {
+                    case 1: 
+                        fprintf(stdout, "A\n");
+                        break;
+                    case 2:
+                        fprintf(stdout, "NS\n");
+                        break;
+                    case 5:
+                        fprintf(stdout, "CNAME\n");
+                        break;
+                    case 6:
+                        fprintf(stdout, "SOA\n");
+                        break;
+                    case 15:
+                        fprintf(stdout, "MX\n");
+                        break;
+                    case 28:
+                        fprintf(stdout, "AAAA\n");
+                        break;
+                    case 33:
+                        fprintf(stdout, "SRV\n");
+                        break;
+                    default:
+                        fprintf(stdout, "UNKNOWN\n");
+                }
+
+
+                
+            fprintf(stdout, "\n");
             }
         }
         if (dns_header->ancount > 0){
+            fprintf(stdout, "[Answer Section]\n\n");
+
             for (int i = 0; i < dns_header->ancount; i++){
-                
+                bool jumped = false;
+                uint16_t jump_backup;
+
+                while (dns_data[data_len] != 0){
+                    uint16_t segment_len = dns_data[data_len];
+
+                    if ((segment_len & DNS_NAME_JUMP) == DNS_NAME_JUMP){
+                        uint16_t jump_target = ((dns_data[data_len] & 0x3F) << 8) | dns_data[data_len + 1];
+
+                        if (!jumped){
+                            jumped = true;
+                            jump_backup = data_len + 2;
+                        }
+
+                        data_len = jump_target - sizeof(dns_header_t);
+                    }
+                    else{
+                        data_len++;
+                        for (int j = 0; j < segment_len; j++){
+                        fprintf(stdout, "%c", dns_data[data_len]);
+                            data_len++;
+                        }
+
+                        if (dns_data[data_len] != 0){
+                            fprintf(stdout, ".");
+                        }
+                    }
+
+                }
+
+                if (jumped){
+                    data_len = jump_backup;
+                }
+
+                uint16_t type = ntohs(*(uint16_t *)(dns_data + data_len));
+                data_len += 2;
+
+                uint16_t class = ntohs(*(uint16_t *)(dns_data + data_len));
+                data_len += 2;
+
+                uint32_t ttl = ntohl(*(uint32_t *)(dns_data + data_len));
+                data_len += 4;
+
+                uint16_t rdlength = ntohs(*(uint16_t *)(dns_data + data_len));
+                data_len += 2;
+
+                fprintf(stdout, " %d ", ttl);
+
+                if (class == 1){
+                    fprintf(stdout, "IN ");
+                }
+                else{
+                    fprintf(stdout, "UNKNOWN ");
+                }
+
+                char rdata[INET6_ADDRSTRLEN];
+                unsigned char *dns_addr = &dns_data[data_len];
+
+
+                if (type == 1) { 
+                    inet_ntop(AF_INET, dns_addr, rdata, INET_ADDRSTRLEN);
+
+                    fprintf(stdout, "A %s\n", rdata);
+
+                } else if (type == 28) { 
+                    inet_ntop(AF_INET6, dns_addr, rdata, INET6_ADDRSTRLEN);
+
+                    fprintf(stdout, "AAAA %s\n", rdata);
+                }
+
+                data_len += rdlength;
+
             }
+
+            fprintf(stdout, "\n");
         }
         if (dns_header->nscount > 0){
 
@@ -168,11 +248,10 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         }
     }
     else{
-        fprintf(stdout, "%s %s->%s (%s %d/%d/%d/%d)\n", time_buffer, ip_src, ip_dst, dns_type, dns_header->qdcount, dns_header->ancount, dns_header->nscount, dns_header->arcount);
+        fprintf(stdout, "%s %s->%s (%s %d/%d/%d/%d)\n\n", time_buffer, ip_src, ip_dst, dns_type, dns_header->qdcount, dns_header->ancount, dns_header->nscount, dns_header->arcount);
 
 
     }
-    fprintf(stdout, "\n");
 }
 
 int main(int argc, char **argv){
@@ -243,7 +322,7 @@ int main(int argc, char **argv){
         exit(1);
     }
 
-    pcap_loop(handle, 2, packet_handler, (unsigned char *)&arguments);
+    pcap_loop(handle, 0, packet_handler, (unsigned char *)&arguments);
 
     pcap_close(handle);
 
