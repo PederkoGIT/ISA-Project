@@ -45,9 +45,12 @@ void append_file(char *file_name, char *string){
     fclose(file);
 }
 
-uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
+uint16_t dns_name_parse(unsigned char *dns_data, uint16_t data_len, arguments_t *arguments){
     bool jumped = false;
     uint16_t jump_backup;
+
+    char domain_name[NAME_LENGTH];
+    uint16_t domain_len = 0;
 
     while (dns_data[data_len] != 0){
         uint16_t segment_len = dns_data[data_len];
@@ -65,13 +68,26 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
         else{
             data_len++;
             for (int j = 0; j < segment_len; j++){
-            fprintf(stdout, "%c", dns_data[data_len]);
+                fprintf(stdout, "%c", dns_data[data_len]);
+                domain_name[domain_len] = dns_data[data_len];
+                domain_len++;
                 data_len++;
             }
 
             if (dns_data[data_len] != 0){
                 fprintf(stdout, ".");
+                domain_name[domain_len] = '.';
+                domain_len++;
             }
+        }
+
+    }
+
+    if (arguments->set_domains){
+        domain_name[domain_len + 1] = '\0';
+
+        if (!find_in_file(arguments->domains_file, domain_name)){
+            append_file(arguments->domains_file, domain_name);
         }
 
     }
@@ -80,6 +96,13 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
         data_len = jump_backup;
         jumped = false;
     }
+
+    return data_len;
+}
+
+uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len, arguments_t *arguments){
+
+    data_len = dns_name_parse(dns_data, data_len, arguments);
 
     uint16_t type = ntohs(*(uint16_t *)(dns_data + data_len));
     data_len += 2;
@@ -121,37 +144,8 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len){
             fprintf(stdout, "SOA ");
         }
 
-        while (dns_data[data_len] != 0){
-            uint16_t segment_len = dns_data[data_len];
-
-            if ((segment_len & DNS_NAME_JUMP) == DNS_NAME_JUMP){
-                uint16_t jump_target = ((dns_data[data_len] & 0x3F) << 8) | dns_data[data_len + 1];
-
-                if (!jumped){
-                    jumped = true;
-                    jump_backup = data_len + 2;
-                }
-
-                data_len = jump_target - sizeof(dns_header_t);
-            }
-            else{
-                    data_len++;
-                    for (int j = 0; j < segment_len; j++){
-                    fprintf(stdout, "%c", dns_data[data_len]);
-                        data_len++;
-                    }
-
-                    if (dns_data[data_len] != 0){
-                        fprintf(stdout, ".");
-                    }
-            }
-
-        }
-
-        if (jumped){
-            data_len = jump_backup;
-            jumped = false;
-        }
+        uint16_t placeholder = dns_name_parse(dns_data, data_len, arguments);
+        (void) placeholder;
 
         fprintf(stdout, "\n");
     }
@@ -182,7 +176,7 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
     char ip_dst[INET6_ADDRSTRLEN];
     int port_dst;
     int port_src;
-    char dns_type[2];
+    char dns_type;
     dns_header_t *dns_header;
     unsigned char *dns_data;
 
@@ -209,10 +203,10 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             dns_header->qdcount = ntohs(dns_header->qdcount);
 
             if ((dns_header->flags & DNS_TYPE_MASK) == DNS_TYPE_MASK){
-                dns_type[0] = 'R';
+                dns_type = 'R';
             }
             else{
-                dns_type[0] = 'Q';
+                dns_type = 'Q';
             }
 
             dns_data = (unsigned char *)(packet + ETHERNET_LEN + ip_header->ip_hl * 4 + sizeof(struct udphdr) + sizeof(dns_header_t));
@@ -329,10 +323,11 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             }
         }
         if (dns_header->ancount > 0){
+
             fprintf(stdout, "[Answer Section]\n\n");
 
             for (int i = 0; i < dns_header->ancount; i++){
-                data_len = dns_printout(dns_data, data_len);
+                data_len = dns_printout(dns_data, data_len, arguments);
             }
 
             fprintf(stdout, "\n");
@@ -342,18 +337,25 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             fprintf(stdout, "[Authority Section]\n\n");
 
             for (int i = 0; i < dns_header->nscount; i++){
-                data_len = dns_printout(dns_data, data_len);
+                data_len = dns_printout(dns_data, data_len, arguments);
             }
 
             fprintf(stdout, "\n");
 
         }
-        if (dns_header->arcount > 0){
+        if (dns_header->arcount > 1){
 
+            fprintf(stdout, "[Additional Section]\n\n");
+
+            for (int i = 0; i < dns_header->arcount - 1; i++){
+                data_len = dns_printout(dns_data, data_len, arguments);
+            }
+
+            fprintf(stdout, "\n");
         }
     }
     else{
-        fprintf(stdout, "%s %s->%s (%s %d/%d/%d/%d)\n\n", time_buffer, ip_src, ip_dst, dns_type, dns_header->qdcount, dns_header->ancount, dns_header->nscount, dns_header->arcount);
+        fprintf(stdout, "%s %s->%s (%c %d/%d/%d/%d)\n\n", time_buffer, ip_src, ip_dst, dns_type, dns_header->qdcount, dns_header->ancount, dns_header->nscount, dns_header->arcount);
 
 
     }
