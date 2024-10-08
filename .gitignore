@@ -53,4 +53,4 @@ dkms.conf
 
 dns-monitor
 test_pcap.pcapng
-domains.txt
+*.txt
