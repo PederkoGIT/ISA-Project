@@ -11,8 +11,21 @@
 #include <netinet/ip6.h>
 #include <net/ethernet.h>
 #include <netinet/udp.h>
+#include <signal.h>
 
 #include "dns-monitor.h"
+
+// global declaration of variable, which needs to be handled when interrupt comes
+pcap_t *handle;
+
+void signal_handler(int sig){
+    if (handle != NULL && (sig == SIGINT || sig == SIGTERM || sig == SIGQUIT)){
+        pcap_close(handle);
+    }
+
+    fprintf(stderr, "\nINTERRUPTED - shutting down\n");
+    exit(1);
+}
 
 
 // function for finding entry in  file
@@ -41,6 +54,9 @@ void append_file(char *file_name, char *string){
     FILE *file = fopen(file_name, "a");
     if (file == NULL){
         fprintf(stderr, "Error: file couldtn be opened\n");
+
+        pcap_close(handle);
+
         exit(1);
     }
 
@@ -191,9 +207,13 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len, arguments_t *a
             fprintf(stdout, "SOA ");
         }
 
-        // print name server or start of authority
+        // print name server or start of authority and dont print it in file
+        bool set_domain_copy = arguments->set_domains;
+        arguments->set_domains = false;
         uint16_t placeholder = dns_name_parse(dns_data, data_len, arguments, domain_name);
         (void) placeholder;
+
+        arguments->set_domains = set_domain_copy;
 
         fprintf(stdout, "\n");
     }
@@ -299,11 +319,11 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         
     }
 
-    // if packet is ipv6
-    else if (ntohs(ethernet_header->ether_type == ETHERTYPE_IPV6)){
-        printf("ipv6\n");
-    }
     else{
+        pcap_close(handle);
+
+        fprintf(stderr, "Error: Unsupported packet found\n");
+
         exit(1);
     }
 
@@ -472,6 +492,10 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
 
 int main(int argc, char **argv){
 
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    signal(SIGQUIT, signal_handler);
+
     // variable for getopt function
     int opt;
 
@@ -488,7 +512,7 @@ int main(int argc, char **argv){
     arguments.set_translations = false;
 
     // findig all user given switches
-    while((opt = getopt(argc, argv, "hi:r:vd:t:")) != -1){
+    while((opt = getopt(argc, argv, "hi:p:vd:t:")) != -1){
         switch (opt){
             case 'h':
                 fprintf(stdout, "how to use:\n./dns-monitor (-i interface | -r pcap file) [-v verbose output] [-d domains file] [-t translation file]\n");
@@ -498,7 +522,7 @@ int main(int argc, char **argv){
                 fprintf(stdout, "%s\n", arguments.interface);
                 arguments.set_interface = true;
                 break;
-            case 'r':
+            case 'p':
                 strncpy(arguments.pcap_file, optarg, INPUT_LEN);
                 fprintf(stdout, "%s\n", arguments.pcap_file);
                 arguments.set_pcap = true;
@@ -518,6 +542,7 @@ int main(int argc, char **argv){
                 arguments.set_translations = true;
                 break;
             default:
+                fprintf(stderr, "Error: wrong use of parameters\n");
                 exit(1);
         }
     }
@@ -529,8 +554,6 @@ int main(int argc, char **argv){
     bpf_u_int32 netp;
     bpf_u_int32 maskp;
     
-
-    pcap_t *handle;
     
     // ono interface given
     if (!arguments.set_interface && !arguments.set_pcap){
