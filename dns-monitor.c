@@ -195,24 +195,85 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len, arguments_t *a
             }
         }
 
+        // add lenght of the data
+        data_len += rdlength;
+
     } 
 
-    // if type is NS or SOA
-    else if (type == 2 || type == 6){
+    // if type is NS
+    else if (type == 2){
+        fprintf(stdout, "NS ");
 
-        if (type == 2){
-            fprintf(stdout, "NS ");
-        }
-        else{
-            fprintf(stdout, "SOA ");
-        }
-
-        // print name server or start of authority and dont print it in file
+        // print name server and dont print it in file
         bool set_domain_copy = arguments->set_domains;
         arguments->set_domains = false;
-        uint16_t placeholder = dns_name_parse(dns_data, data_len, arguments, domain_name);
-        (void) placeholder;
+        data_len = dns_name_parse(dns_data, data_len, arguments, domain_name);
+        
+        arguments->set_domains = set_domain_copy;
 
+        fprintf(stdout, "\n");
+    }
+
+    // if type is CNAME
+    else if (type == 5){
+        fprintf(stdout, "CNAME ");
+
+        data_len = dns_name_parse(dns_data, data_len, arguments, domain_name);
+
+        fprintf(stdout, "\n");
+    }
+
+    // if type is SOA
+    else if (type == 6){
+        fprintf(stdout, "SOA ");
+
+        // print primary name server and dont print it in file
+        bool set_domain_copy = arguments->set_domains;
+        arguments->set_domains = false;
+        data_len = dns_name_parse(dns_data, data_len, arguments, domain_name);
+        fprintf(stdout, " ");
+
+        // print primary email of responsible person and dont print it in file
+        data_len = dns_name_parse(dns_data, data_len, arguments, domain_name);
+
+        arguments->set_domains = set_domain_copy;
+
+        // extract serial number
+        uint32_t serial_number = ntohl(*(uint32_t *)(dns_data + data_len));
+        data_len += 4;
+
+        // extract refresh
+        uint32_t refresh = ntohl(*(uint32_t *)(dns_data + data_len));
+        data_len += 4;
+
+        // extract retry
+        uint32_t retry = ntohl(*(uint32_t *)(dns_data + data_len));
+        data_len += 4;
+
+        // extract expire
+        uint32_t expire = ntohl(*(uint32_t *)(dns_data + data_len));
+        data_len += 4;
+
+        // extract minimum ttl
+        uint32_t minimum_ttl = ntohl(*(uint32_t *)(dns_data + data_len));
+        data_len += 4;
+
+        fprintf(stdout, " %d %d %d %d %d\n", serial_number, refresh, retry, expire, minimum_ttl);
+    }
+
+    // if type is MX
+    else if (type == 15){
+        
+        // extract priority
+        uint16_t priority = ntohs(*(uint16_t *)(dns_data + data_len));
+        data_len += 2;
+        
+        fprintf(stdout, "MX %d ", priority);
+
+        // print mail server and dont print it in file
+        bool set_domain_copy = arguments->set_domains;
+        arguments->set_domains = false;
+        data_len = dns_name_parse(dns_data, data_len, arguments, domain_name);
         arguments->set_domains = set_domain_copy;
 
         fprintf(stdout, "\n");
@@ -236,10 +297,38 @@ uint16_t dns_printout(unsigned char *dns_data, uint16_t data_len, arguments_t *a
                 append_file(arguments->translation_file, translation);
             }
         }
+
+        // add lenght of the data
+        data_len += rdlength;
     }
 
-    // add lenght of the data
-    data_len += rdlength;
+    // if type is SRV
+    else if (type == 33){
+
+        // extract priority
+        uint16_t priority = ntohs(*(uint16_t *)(dns_data + data_len));
+        data_len += 2;
+
+        // extract weight
+        uint16_t weight = ntohs(*(uint16_t *)(dns_data + data_len));
+        data_len += 2;
+
+        // extract priority
+        uint16_t port = ntohs(*(uint16_t *)(dns_data + data_len));
+        data_len += 2;
+
+        fprintf(stdout, "SRV %d %d %d ", priority, weight, port);
+
+        // print server and dont print it in file
+        bool set_domain_copy = arguments->set_domains;
+        arguments->set_domains = false;
+        data_len = dns_name_parse(dns_data, data_len, arguments, domain_name);
+        arguments->set_domains = set_domain_copy;
+
+        fprintf(stdout, "\n");
+    }
+
+    
 
     return data_len;
 }
