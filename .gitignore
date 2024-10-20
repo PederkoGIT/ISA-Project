@@ -52,5 +52,6 @@ Mkfile.old
 dkms.conf
 
 dns-monitor
-test_pcap.pcapng
+*.pcapng
 *.txt
+*.tar

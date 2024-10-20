@@ -1,3 +1,8 @@
+/*
+ * login: xpalen06
+ * ISA project: DNS Monitor
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
@@ -640,8 +645,8 @@ int main(int argc, char **argv){
     // variables for pcap functions
     char errbuff[PCAP_ERRBUF_SIZE];
 
-    bpf_u_int32 netp;
-    bpf_u_int32 maskp;
+    bpf_u_int32 netp = 0;
+    bpf_u_int32 maskp = 0;
     
     
     // ono interface given
